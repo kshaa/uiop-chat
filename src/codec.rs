@@ -1,4 +1,4 @@
-use crate::protocol::*;
+use crate::{logger::NS_CONN, protocol::*};
 use std::{mem, str::FromStr};
 use anyhow::{anyhow, Context, Result};
 use log::warn;
@@ -154,7 +154,7 @@ pub async fn read_buffer_until_payload<R: AsyncBufReadExt + Unpin>(buf_reader: &
         // Parse bytes into UTF-8
         let text_payload = match String::from_utf8(mem::take(&mut byte_payload)).with_context(|| format!("Received message is not a valid UTF-8 byte stream, ignoring")) {
             Err(err) => {
-                warn!("{}", err);
+                warn!(target: NS_CONN, "{}", err);
                 continue
             },
             Ok(text_payload) => text_payload,

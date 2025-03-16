@@ -5,7 +5,7 @@ use log::*;
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::Mutex;
 use tui_logger::*;
-use crate::{client::{DspReader, DspWriter}, config::DspClientConfig, logger::NS_CHAT, protocol::{DspMessage, DspPayload, MessageMessage}};
+use crate::{client::{DspReader, DspWriter}, config::DspClientConfig, logger::{NS_APP, NS_CHAT}, protocol::{DspMessage, DspPayload, MessageMessage, QuitMessage}};
 use self::crossterm_backend::*;
 
 pub struct App {
@@ -15,8 +15,8 @@ pub struct App {
     app_event_rx: Option<Receiver<AppEvent>>,
     app_event_tx: Sender<AppEvent>,
     mode: AppMode,
-    states: Vec<TuiWidgetState>,
     tab_names: Vec<&'static str>,
+    log_state: TuiWidgetState,
     selected_tab: usize,
     active_message: String,
 }
@@ -31,7 +31,8 @@ enum AppMode {
 enum AppEvent {
     UiEvent(Event),
     PayloadReceived(DspPayload),
-    PayloadSent((DspWriter, String, String)),
+    PayloadSent((DspWriter, DspPayload)),
+    FatalError(String),
     Rerender(),
 }
 
@@ -39,13 +40,9 @@ impl App {
     pub fn new(client_reader: DspReader, client_writer: DspWriter, client_config: DspClientConfig) -> App {
         let (app_event_tx, app_event_rx) = mpsc::channel::<AppEvent>();
 
-        let states = vec![
-            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
-            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
-        ];
+        let log_state = TuiWidgetState::new().set_default_display_level(LevelFilter::Trace);
 
         // Adding this line had provoked the bug as described in issue #69
-        // let states = states.into_iter().map(|s| s.set_level_for_target("some::logger", LevelFilter::Off)).collect();
         let tab_names = vec!["Message", "Quit"];
         App {
             client_reader: Some(client_reader),
@@ -54,10 +51,18 @@ impl App {
             app_event_tx,
             app_event_rx: Some(app_event_rx),
             mode: AppMode::Run,
-            states,
+            log_state,
             tab_names,
             selected_tab: 0,
             active_message: String::from(""),
+        }
+    }
+
+    fn send_ui_fatal(tx: Sender<AppEvent>, error: String) {
+        loop {
+            if let None = tx.send(AppEvent::FatalError(error.clone())).err() {
+                return
+            }
         }
     }
 
@@ -65,12 +70,16 @@ impl App {
         // Use an mpsc::channel to combine stdin events with app events
         let event_rx = self.app_event_rx.take().ok_or(anyhow!("App initialized without UI event receiver"))?;
         let event_tx = self.app_event_tx.clone();
+        let error_tx = self.app_event_tx.clone();
         let payload_receive_tx = self.app_event_tx.clone();
         let client_reader = self.client_reader.take().ok_or(anyhow!("App initialized without DSP reader"))?;
 
         thread::spawn(move || input_thread(event_tx));
         tokio::spawn(async move {
-            payload_receive_task(client_reader, payload_receive_tx).await.unwrap()
+            let task = payload_receive_task(client_reader, payload_receive_tx);
+            if let Some(err) = task.await.with_context(|| format!("Failed to spawn message receiver")).err() {
+                App::send_ui_fatal(error_tx, err.to_string());
+            };
         });
 
         self.run(terminal, event_rx)
@@ -99,7 +108,17 @@ impl App {
             match event {
                 AppEvent::UiEvent(event) => self.handle_ui_event(event),
                 AppEvent::PayloadReceived(payload) => self.react_to_payload(payload),
-                AppEvent::PayloadSent((writer, username, text)) => self.active_message_sent(writer, username, text),
+                AppEvent::PayloadSent((writer, payload)) => {
+                    match payload.message {
+                        DspMessage::QuitMessage(_) => self.mode = AppMode::Quit,
+                        DspMessage::MessageMessage(_) => self.active_message_sent(writer),
+                        _ => {},
+                    }
+                },
+                AppEvent::FatalError(error) => {
+                    error!(target: NS_APP, "{}", error);
+                    let _ = self.app_event_tx.send(AppEvent::Rerender());
+                },
                 AppEvent::Rerender() => {},
             }
             if self.mode == AppMode::Quit {
@@ -122,13 +141,14 @@ impl App {
             DspMessage::ResponseMessage(_) => warn!(target: NS_CHAT, "You've received a challenge response, this shouldn't happen. Inform server admin."),
             DspMessage::ErrorMessage(m) => error!(target: NS_CHAT, "Server error: {}", m.text),
         }
+        // Bad hack, because re-rendering is sometimes missed
+        thread::sleep(Duration::from_millis(10));
         let _ = self.app_event_tx.send(AppEvent::Rerender());
     }
 
     fn handle_ui_event(&mut self, event: Event) {
         debug!(target: "App", "Handling UI event: {:?}",event);
         let selected_tab = self.selected_tab;
-        let state = self.selected_state();
 
         if let Event::Key(key) = event {
             let code = key.code;
@@ -139,9 +159,9 @@ impl App {
                 Key::Tab => self.next_tab(),
 
                 // Chat scrolling
-                Key::Esc => state.transition(TuiWidgetEvent::EscapeKey),
-                Key::PageUp => state.transition(TuiWidgetEvent::PrevPageKey),
-                Key::PageDown => state.transition(TuiWidgetEvent::NextPageKey),
+                Key::Esc => self.log_state.transition(TuiWidgetEvent::EscapeKey),
+                Key::PageUp => self.log_state.transition(TuiWidgetEvent::PrevPageKey),
+                Key::PageDown => self.log_state.transition(TuiWidgetEvent::NextPageKey),
 
                 // Message sending
                 Key::Char(c) if selected_tab == 0 => self.add_active_message(c),
@@ -149,15 +169,11 @@ impl App {
                 Key::Enter if selected_tab == 0 => self.send_active_message(),
 
                 // Quitting
-                Key::Enter if selected_tab == 1 => self.mode = AppMode::Quit,
+                Key::Enter if selected_tab == 1 => self.trigger_quit(),
 
                 _ => (),
             }
         }
-    }
-
-    fn selected_state(&mut self) -> &mut TuiWidgetState {
-        &mut self.states[self.selected_tab]
     }
 
     fn next_tab(&mut self) {
@@ -172,17 +188,15 @@ impl App {
         self.active_message.pop();
     }
 
-    // Quite unsafe
-    fn send_active_message(&mut self) {
+    fn trigger_quit(&mut self) {
+        self.send_payload(DspPayload {
+            username: self.client_config.username.clone(),
+            message: DspMessage::QuitMessage(QuitMessage {}),
+        });
+    }
+
+    fn send_payload(&mut self, payload: DspPayload) {
         let ui_tx = self.app_event_tx.clone();
-        let username = self.client_config.username.clone();
-        let text = self.active_message.clone();
-        if text.is_empty() {
-            error!(target: NS_CHAT, "Can't send empty message");
-            return
-        }
-        let message = DspMessage::MessageMessage(MessageMessage { text: text.clone() });
-        let payload = DspPayload { username: username.clone(), message };
         let mut client_writer = match self.client_writer.try_lock() {
             Ok(mut maybe_writer) => {
                 match maybe_writer.take() {
@@ -200,13 +214,28 @@ impl App {
         };
 
         tokio::spawn(async move {
-            client_writer.write(payload).await.with_context(|| format!("Failed to send message to server")).unwrap();
-            let message = AppEvent::PayloadSent((client_writer, username, text));
-            ui_tx.send(message).with_context(|| format!("Failed to return DspWriter to UI")).unwrap();
+            if let Some(err) = client_writer.write(payload.clone()).await.with_context(|| format!("Failed to send message to server")).err() {
+                App::send_ui_fatal(ui_tx.clone(), err.to_string());
+            }
+            if let Some(err) = ui_tx.send(AppEvent::PayloadSent((client_writer, payload))).with_context(|| format!("Failed to return DspWriter to UI")).err() {
+                App::send_ui_fatal(ui_tx.clone(), err.to_string());
+            }
         });
     }
 
-    fn active_message_sent(&mut self, writer: DspWriter, username: String, text: String) {
+    fn send_active_message(&mut self) {
+        let username = self.client_config.username.clone();
+        let text = self.active_message.clone();
+        if text.is_empty() {
+            error!(target: NS_CHAT, "Can't send empty message");
+            return
+        }
+        let message = DspMessage::MessageMessage(MessageMessage { text: text.clone() });
+        let payload = DspPayload { username: username.clone(), message };        
+        self.send_payload(payload);
+    }
+
+    fn active_message_sent(&mut self, writer: DspWriter) {
         loop {
             match self.client_writer.try_lock() {
                 Ok(mut parking) => { 
@@ -255,9 +284,6 @@ impl Widget for &mut App {
             .select(self.selected_tab)
             .render(tabs_area, buf);
 
-        let filter_state = TuiWidgetState::new()
-            .set_default_display_level(LevelFilter::Debug);
-
         TuiLoggerWidget::default()
             .block(Block::default().title(format!("Server chat: {}", self.client_config.server_address)).borders(Borders::ALL))
             .style_error(Style::default().fg(Color::Red).italic())
@@ -271,9 +297,10 @@ impl Widget for &mut App {
             .output_target(true)
             .output_file(false)
             .output_line(false)
-            .state(&filter_state)
+            .state(&self.log_state)
             .render(smart_area, buf);
 
+        debug!("Test");
         let prompt_block = Block::new()
             .border_type(BorderType::Rounded)
             .borders(Borders::ALL)

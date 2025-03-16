@@ -2,7 +2,7 @@
 name = "uiop-dsp"
 version = "0.1.0"
 edition = "2024"
-default-run = "uiop-chat"
+default-run = "uiop-client"
 
 [dependencies]
 anyhow = "1.0.97"
@@ -17,9 +17,5 @@ tokio = { version = "1.44.1", features = ["full"] }
 tui-logger = "0.17.0"
 
 [[bin]]
-name = "uiop-chat"
+name = "uiop-client"
 path = "src/main.rs"
-
-[[bin]]
-name = "test"
-path = "src/test.rs"

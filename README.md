@@ -10,6 +10,9 @@ _N.B. I took no part in the design of the protocol, I just saw it and implemente
   
 ## Usage
   
+Pre-requisites:  
+- [Rust toolchain must be installed](https://rustup.rs/)  
+  
 Development:  
 ```bash
 $ cargo run -- --username johndoe
@@ -20,3 +23,8 @@ Production:
 $ cargo build --release
 $ ./target/release/uiop-client --username johndoe
 ```
+
+## Notes
+  
+- The `CHALLENGE` message type is not handled in this client  
+- This was a weekend project, no reliability, performance or _anything really_ is to be expected  

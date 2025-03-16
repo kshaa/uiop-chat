@@ -141,13 +141,14 @@ impl App {
             DspMessage::ResponseMessage(_) => warn!(target: NS_CHAT, "You've received a challenge response, this shouldn't happen. Inform server admin."),
             DspMessage::ErrorMessage(m) => error!(target: NS_CHAT, "Server error: {}", m.text),
         }
+        // Reset scroll
+        self.log_state.transition(TuiWidgetEvent::EscapeKey);
         // Bad hack, because re-rendering is sometimes missed
         thread::sleep(Duration::from_millis(10));
         let _ = self.app_event_tx.send(AppEvent::Rerender());
     }
 
     fn handle_ui_event(&mut self, event: Event) {
-        debug!(target: "App", "Handling UI event: {:?}",event);
         let selected_tab = self.selected_tab;
 
         if let Event::Key(key) = event {
@@ -300,7 +301,6 @@ impl Widget for &mut App {
             .state(&self.log_state)
             .render(smart_area, buf);
 
-        debug!("Test");
         let prompt_block = Block::new()
             .border_type(BorderType::Rounded)
             .borders(Borders::ALL)

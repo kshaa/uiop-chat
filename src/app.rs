@@ -32,6 +32,7 @@ enum AppEvent {
     UiEvent(Event),
     PayloadReceived(DspPayload),
     PayloadSent((DspWriter, String, String)),
+    Rerender(),
 }
 
 impl App {
@@ -99,6 +100,7 @@ impl App {
                 AppEvent::UiEvent(event) => self.handle_ui_event(event),
                 AppEvent::PayloadReceived(payload) => self.react_to_payload(payload),
                 AppEvent::PayloadSent((writer, username, text)) => self.active_message_sent(writer, username, text),
+                AppEvent::Rerender() => {},
             }
             if self.mode == AppMode::Quit {
                 break;
@@ -120,6 +122,7 @@ impl App {
             DspMessage::ResponseMessage(_) => warn!(target: NS_CHAT, "You've received a challenge response, this shouldn't happen. Inform server admin."),
             DspMessage::ErrorMessage(m) => error!(target: NS_CHAT, "Server error: {}", m.text),
         }
+        let _ = self.app_event_tx.send(AppEvent::Rerender());
     }
 
     fn handle_ui_event(&mut self, event: Event) {

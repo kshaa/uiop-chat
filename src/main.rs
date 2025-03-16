@@ -1,9 +1,12 @@
+use log::info;
+use uiop_dsp::protocol::JoinMessage;
+use uiop_dsp::{app::App, protocol::DspPayload};
+use uiop_dsp::client::DspClient;
 use uiop_dsp::config::Config;
-use uiop_dsp::controller::Controller;
-use uiop_dsp::logger::init_logger;
+use uiop_dsp::logger::{init_logger, NS_CONN};
 use uiop_dsp::args::*;
 use clap::Parser;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::error::Error;
 
 #[tokio::main]
@@ -12,17 +15,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _ = init_logger()?;
 
     // Parse CLI args
-    let args = Args::try_parse()?;
+    let args = Args::try_parse().with_context(|| format!("Invalid CLI arguments passed"))?;
 
     // Build config
     let config  = Config::from_args(args);
 
-    // Init chat controller
-    let controller = Controller::init(config).await?;
+    // Start DSP client
+    let mut client = DspClient::spawn(&config.client).await?;
 
-    // Execute chat controller run-loop
-    let _ = controller.run_loop().await?;
+    // Join the server
+    client.writer.write(DspPayload { 
+        username: config.client.username.clone(), 
+        message: uiop_dsp::protocol::DspMessage::JoinMessage(JoinMessage {} )}
+    ).await?;
+    info!(target: NS_CONN, "Joined chat server");
 
-    // Control loop closed successfully, quitting
+    // Init chat app
+    let app = App::new(client.reader, client.writer, config.client);
+    app.start_with_crossterm()?;
+
+    // App closed successfully, quitting
     Ok(())
 }

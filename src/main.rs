@@ -21,14 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _ = init_logger(&config.log)?;
 
     // Start DSP client
-    let mut client = DspClient::spawn(&config.client).await?;
-
-    // Join the server
-    client.writer.write(DspPayload { 
-        username: config.client.username.clone(), 
-        message: uiop_dsp::protocol::DspMessage::JoinMessage(JoinMessage {} )}
-    ).await?;
-    info!(target: NS_CONN, "Joined chat server");
+    let client = DspClient::start(&config.client).await?;
 
     // Init chat app
     let app = App::new(client.reader, client.writer, config.client);

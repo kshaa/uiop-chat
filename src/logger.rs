@@ -14,7 +14,7 @@ pub fn init_logger(log_config: &DspLogConfig) -> Result<()> {
     if let Some(log_file) = &log_config.log_file {
         let file_opts = TuiLoggerFile::new(&log_file)
             .output_separator(' ')
-            .output_timestamp(Some("%H:%M:%S".to_string()))
+            .output_timestamp(Some("%Y-%m-%dT%H:%M:%S".to_string()))
             .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
             .output_target(true)
             .output_file(false)

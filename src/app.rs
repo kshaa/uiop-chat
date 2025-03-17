@@ -77,7 +77,7 @@ impl App {
         thread::spawn(move || input_thread(event_tx));
         tokio::spawn(async move {
             let task = payload_receive_task(client_reader, payload_receive_tx);
-            if let Some(err) = task.await.with_context(|| format!("Failed to spawn message receiver")).err() {
+            if let Some(err) = task.await.with_context(|| format!("Connection closed, you need to restart the client")).err() {
                 App::send_ui_fatal(error_tx, err.to_string());
             };
         });
@@ -96,6 +96,16 @@ impl App {
         terminal.clear()?;    
         
         Ok(())
+    }
+
+    pub fn rerender(&mut self) {
+        thread::sleep(Duration::from_millis(10));
+        let _ = self.app_event_tx.send(AppEvent::Rerender());   
+    }
+
+    pub fn rerender_chat(&mut self) {
+        self.log_state.transition(TuiWidgetEvent::EscapeKey);
+        self.rerender();
     }
 
     /// Main application loop
@@ -117,7 +127,7 @@ impl App {
                 },
                 AppEvent::FatalError(error) => {
                     error!(target: NS_APP, "{}", error);
-                    let _ = self.app_event_tx.send(AppEvent::Rerender());
+                    self.rerender_chat();
                 },
                 AppEvent::Rerender() => {},
             }
@@ -141,11 +151,7 @@ impl App {
             DspMessage::ResponseMessage(_) => warn!(target: NS_CHAT, "You've received a challenge response, this shouldn't happen. Inform server admin."),
             DspMessage::ErrorMessage(m) => error!(target: NS_CHAT, "Server error: {}", m.text),
         }
-        // Reset scroll
-        self.log_state.transition(TuiWidgetEvent::EscapeKey);
-        // Bad hack, because re-rendering is sometimes missed
-        thread::sleep(Duration::from_millis(10));
-        let _ = self.app_event_tx.send(AppEvent::Rerender());
+        self.rerender_chat();
     }
 
     fn handle_ui_event(&mut self, event: Event) {

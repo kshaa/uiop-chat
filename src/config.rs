@@ -1,12 +1,17 @@
 use crate::args::Args;
 
+pub struct DspLogConfig {
+    pub log_file: Option<String>,
+}
+
 pub struct DspClientConfig {
     pub server_address: String,
     pub username: String,
 }
 
 pub struct Config {
-    pub client: DspClientConfig
+    pub client: DspClientConfig,
+    pub log: DspLogConfig,
 }
 
 impl Config {
@@ -18,8 +23,14 @@ impl Config {
             username,
         };
 
+        let log_file = args.log_file;
+        let log = DspLogConfig {
+            log_file,
+        };
+
         Config {
             client,
+            log,
         }
     }
 }

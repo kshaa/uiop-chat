@@ -10,4 +10,7 @@ pub struct Args {
 
     #[arg(short, long)]
     pub username: String,
+
+    #[arg(short, long)]
+    pub log_file: Option<String>,
 }

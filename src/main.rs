@@ -11,14 +11,14 @@ use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Init logger
-    let _ = init_logger()?;
-
     // Parse CLI args
     let args = Args::try_parse().with_context(|| format!("Invalid CLI arguments passed"))?;
 
     // Build config
     let config  = Config::from_args(args);
+
+    // Init logger
+    let _ = init_logger(&config.log)?;
 
     // Start DSP client
     let mut client = DspClient::spawn(&config.client).await?;

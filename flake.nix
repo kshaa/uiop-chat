@@ -1,11 +1,12 @@
 {
   inputs = {
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
     naersk.url = "github:nix-community/naersk/master";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils, naersk }:
+  outputs = { self, nixpkgs, utils, naersk, ... }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };

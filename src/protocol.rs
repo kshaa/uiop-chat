@@ -16,15 +16,24 @@ pub struct JoinMessage {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuitMessage {}
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MessageMessage { pub text: String }
+pub struct MessageMessage {
+    pub text: String,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChallengeMessage { pub n: u64, pub phrase: String }
+pub struct ChallengeMessage {
+    pub n: u64,
+    pub phrase: String,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RescindedMessage {}
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResponseMessage { pub phrase: String }
+pub struct ResponseMessage {
+    pub phrase: String,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ErrorMessage { pub text: String }
+pub struct ErrorMessage {
+    pub text: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DspMessage {

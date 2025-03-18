@@ -1,7 +1,7 @@
-pub mod protocol;
-pub mod codec;
-pub mod client;
-pub mod logger;
-pub mod config;
-pub mod args;
 pub mod app;
+pub mod args;
+pub mod client;
+pub mod codec;
+pub mod config;
+pub mod logger;
+pub mod protocol;

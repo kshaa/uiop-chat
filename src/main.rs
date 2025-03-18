@@ -1,13 +1,10 @@
-use log::info;
-use uiop_dsp::protocol::JoinMessage;
-use uiop_dsp::{app::App, protocol::DspPayload};
-use uiop_dsp::client::DspClient;
-use uiop_dsp::config::Config;
-use uiop_dsp::logger::{init_logger, NS_CONN};
-use uiop_dsp::args::*;
-use clap::Parser;
 use anyhow::{Context, Result};
+use clap::Parser;
 use std::error::Error;
+use uiop_dsp::args::*;
+use uiop_dsp::config::Config;
+use uiop_dsp::logger::init_logger;
+use uiop_dsp::{app::main::App, client::DspClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -15,7 +12,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::try_parse().with_context(|| format!("Invalid CLI arguments passed"))?;
 
     // Build config
-    let config  = Config::from_args(args);
+    let config = Config::from_args(args);
 
     // Init logger
     let _ = init_logger(&config.log)?;

@@ -1,12 +1,23 @@
-use crate::{codec::{payload_bytes, read_buffer_until_payload}, config::DspClientConfig, logger::NS_CONN, protocol::{DspMessage, *}};
+use crate::{
+    codec::{payload_bytes, read_buffer_until_payload},
+    config::DspClientConfig,
+    logger::NS_CONN,
+    protocol::{DspMessage, *},
+};
 
 use anyhow::{Context, Result};
-use log::{debug, info};
-use tokio::{io::{AsyncWriteExt, BufReader}, net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpStream}};
+use log::debug;
 use std::collections::VecDeque;
+use tokio::{
+    io::{AsyncWriteExt, BufReader},
+    net::{
+        TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    },
+};
 
 pub struct DspReader {
-    underlying: BufReader<OwnedReadHalf>
+    underlying: BufReader<OwnedReadHalf>,
 }
 
 impl DspReader {
@@ -16,7 +27,7 @@ impl DspReader {
 }
 
 pub struct DspWriter {
-    underlying: OwnedWriteHalf
+    underlying: OwnedWriteHalf,
 }
 
 impl DspWriter {
@@ -24,7 +35,16 @@ impl DspWriter {
         let mut bytes = payload_bytes(payload);
         bytes.push(0u8);
         let mut deq = VecDeque::from(bytes);
-        self.underlying.write_all_buf(&mut deq).await.with_context(|| format!("Failed to send payload to socket"))
+        self.underlying
+            .write_all_buf(&mut deq)
+            .await
+            .with_context(|| format!("Failed to send payload to socket"))?;
+        self.underlying
+            .flush()
+            .await
+            .with_context(|| format!("Failed to send (flush) payload to socket"))?;
+
+        Ok(())
     }
 }
 
@@ -38,23 +58,33 @@ impl DspClient {
         // Init connection
         let address_for_connection = config.server_address.clone();
         debug!(target: NS_CONN, "Connecting to {}...", address_for_connection);
-        let stream: TcpStream = TcpStream::connect(address_for_connection).await.with_context(|| format!("Failed to connect to DSP server at '{}'", &config.server_address))?;
+        let stream: TcpStream = TcpStream::connect(address_for_connection)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to connect to DSP server at '{}'",
+                    &config.server_address
+                )
+            })?;
         debug!(target: NS_CONN, "Connected!");
 
         // Split connection into RW
         let (reader_raw, writer_raw) = stream.into_split();
-        let reader = DspReader { underlying: BufReader::new(reader_raw) };
-        let mut writer = DspWriter { underlying: writer_raw };
+        let reader = DspReader {
+            underlying: BufReader::new(reader_raw),
+        };
+        let mut writer = DspWriter {
+            underlying: writer_raw,
+        };
 
         // Join the server
-        writer.write(DspPayload { 
-            username: config.username.clone(), 
-            message: DspMessage::JoinMessage(JoinMessage {} )}
-        ).await?;
-        
-        Ok(DspClient {
-            reader,
-            writer,
-        })
+        writer
+            .write(DspPayload {
+                username: config.username.clone(),
+                message: DspMessage::JoinMessage(JoinMessage {}),
+            })
+            .await?;
+
+        Ok(DspClient { reader, writer })
     }
 }

@@ -24,15 +24,8 @@ impl Config {
         };
 
         let log_file = args.log_file;
-        let log = DspLogConfig {
-            log_file,
-        };
+        let log = DspLogConfig { log_file };
 
-        Config {
-            client,
-            log,
-        }
+        Config { client, log }
     }
 }
-
-
